@@ -67,6 +67,63 @@
       <span>共 {{ total }} 条报告生成记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="panel" data-testid="report-chart-preview">
+      <header class="panel-head">
+        <div>
+          <h3>报告图表预览</h3>
+          <p class="panel-desc">
+            预览只读图表数据快照，不重新读源数据；每张图表都必须带齐 X/Y 轴坐标点，缺坐标即视为预览不完整。
+          </p>
+        </div>
+        <div class="panel-actions">
+          <label class="filter-item">
+            <span>报告模板</span>
+            <select v-model="selectedTemplateId" @change="loadPreview">
+              <option v-for="row in rows" :key="String(row.id)" :value="Number(row.id)">
+                {{ row["模板编号"] }} · {{ row["模板名称"] }}
+              </option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <p v-if="preview" class="panel-note" :class="preview.complete ? 'verify-ok' : 'error-text'">
+        {{ preview.message }}
+      </p>
+
+      <template v-if="preview">
+        <article v-for="chart in preview.charts" :key="chart.chartNo" class="report-chart">
+          <h4>{{ chart.chartNo }} · {{ chart.chartName }}</h4>
+          <p class="panel-desc">
+            快照：{{ chart.snapshot ? `${chart.snapshot.id}（${chart.snapshot.status === 'active' ? '生效' : '已替代'}）` : '缺失' }}
+            · 坐标字段：{{ chart.xField || '—' }} → {{ chart.yField || '—' }}
+          </p>
+          <table v-if="chart.pointRows.length" class="data-table">
+            <thead>
+              <tr>
+                <th>坐标点</th>
+                <th>X轴字段</th>
+                <th>Y值</th>
+                <th>Y轴字段</th>
+                <th>数据集版本</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="point in chart.pointRows" :key="`${chart.chartNo}-${point.coordinate}`">
+                <td>{{ point.coordinate }}</td>
+                <td>{{ point.xField }}</td>
+                <td>{{ point.y }}</td>
+                <td>{{ point.yField }}</td>
+                <td>{{ point.datasetVersion }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="empty-state">该图表没有可预览的坐标点</p>
+          <p v-if="chart.messages.length" class="error-text panel-note">{{ chart.messages.join('；') }}</p>
+        </article>
+      </template>
+    </section>
   </section>
 </template>
 
@@ -77,9 +134,10 @@ import {
   downloadEntries,
   listEntries,
   moduleMeta,
+  previewReportCharts,
   runAction as applyAction,
 } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import type { EntryRow, ReportChartPreview } from '@/data/types'
 
 const meta = moduleMeta('reportgen')
 const columns = ["模板编号", "模板名称", "包含图表", "报告周期", "导出格式", "推送渠道", "水印开关", "附件压缩"]
@@ -92,12 +150,19 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const selectedTemplateId = ref<number | null>(null)
+const preview = ref<ReportChartPreview | null>(null)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+function loadPreview() {
+  preview.value =
+    selectedTemplateId.value === null ? null : previewReportCharts(selectedTemplateId.value)
+}
 
 function resetFilters() {
   filters.value = {}
@@ -128,6 +193,15 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    if (
+      selectedTemplateId.value === null ||
+      !rows.value.some((row) => Number(row.id) === selectedTemplateId.value)
+    ) {
+      // 默认选已生效的模板，报告预览看的应该是下游真正会用到的那份。
+      const effective = rows.value.find((row) => String(row.status) === '已生效') ?? rows.value[0]
+      selectedTemplateId.value = effective ? Number(effective.id) : null
+    }
+    loadPreview()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '报告生成列表读取失败'
   }

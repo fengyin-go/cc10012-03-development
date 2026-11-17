@@ -1,6 +1,21 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { resetChartSnapshots } from '@/data/chart-snapshot-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+
+// 图表数据构建与快照服务：统一从这里对外暴露，页面仍只依赖 local-service。
+export {
+  downloadChartData,
+  ensureChartSnapshotsSeeded,
+  exportChartData,
+  getActiveChartSnapshot,
+  getChartDataDetail,
+  listChartSnapshots,
+  previewReportCharts,
+  refreshChartSnapshot,
+  restorePreviousChartSnapshot,
+  verifyChartSnapshot,
+} from './chart-service'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -58,6 +73,10 @@ export function runAction(key: string, id: number, action: string): ActionResult
 
 export function resetModule(key: string): PageResult {
   resetRows(key)
+  // 图表配置回到示例数据后，按它生成的快照也一并清掉，下次读取会重新按样例版本播种。
+  if (key === 'chart') {
+    resetChartSnapshots()
+  }
   return listEntries(key)
 }
 

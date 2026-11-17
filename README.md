@@ -14,7 +14,8 @@
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
 │   ├── src/views/            每个业务模块一个页面
 │   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
-│   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
+│   ├── src/api/chart-service.ts   图表数据构建与快照：按坐标聚合、快照生效/回退、报告预览
+│   ├── src/data/             模块元数据 / 示例数据 / 图表数据集源 / localStorage 持久化
 │   ├── src/stores/           会话与筛选状态
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
 ├── .gitignore
@@ -43,7 +44,7 @@ npm run build
 | 模块 | 目录 | 业务对象 | 主要字段 |
 | --- | --- | --- | --- |
 | 交互查询 | `query` | 查询语句 | 语句编号、查询表达式、目标数据集 |
-| 可视化图表 | `chart` | 图表配置 | 图表编号、图表名称、图表类型 |
+| 可视化图表 | `chart` | 图表配置 | 图表编号、图表名称、图表类型、X轴字段、Y轴字段 |
 | 数据源接入 | `source` | 接入配置 | 配置编号、连接类型、接入地址 |
 | 聚合计算 | `aggregate` | 聚合方案 | 方案编号、聚合函数、目标字段 |
 | 数据筛选 | `filter` | 筛选规则 | 规则编号、目标数据集、筛选字段 |
@@ -68,7 +69,14 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 图表数据通过「图表数据快照」落地：一次构建把图表配置的 X/Y 轴字段和数据集某一版源数据
+  聚合成快照，保存在 `data-explore-studio:chart-snapshots`。同一张图表任何时刻只有一份
+  `active` 快照对下游（图表页 / 报告预览 / 导出）可见；构建失败不写入任何数据，上一份完整
+  快照继续生效；相同配置 + 相同源版本 + 相同口径重复提交只保留一份快照。换版期间同一坐标
+  同时存在新旧两列结果时，每个坐标点都记下来源版本与它自己的取值，另一版取值留在备选口径
+  里供比较，不会用半次刷新拼出缺坐标点的图表。
 - 想回到初始数据：清掉浏览器里 `data-explore-studio:entries` 这一项，或调用 `resetModule(模块)`。
+  图表数据快照另存在 `data-explore-studio:chart-snapshots`，需要一并清掉才会重新按样例版本播种。
 
 领域：数据工程
 子方向：数据分析与数据应用
